@@ -8,156 +8,188 @@ from .reward_engine import RewardEngine
 class GatekeeperEnv:
     """
     OpenEnv-compatible Reinforcement Learning environment for Cybersecurity defense.
-    Simulates Realistic Network Traffic and WAF-like Mitigation Strategies.
+    Orchestrates: Traffic -> Action -> State Update -> Reward -> Observation.
     """
 
-    def __init__(self):
-        self.traffic_gen = TrafficGenerator()
+    def __init__(self, seed: int = 42):
+        self.seed = seed
+        self.traffic_gen = TrafficGenerator(seed=seed)
         self.reward_engine = RewardEngine()
-        self._state: StateModel = StateModel(
-            raw_logs=[],
-            aggregated_stats={},
-            active_mitigations=[],
-            attack_flags={},
-            current_step=0
-        )
+        self._state: Optional[StateModel] = None
         self.is_done = False
 
-    async def reset(self) -> ObservationModel:
+    async def reset(self) -> Dict[str, Any]:
         """
         Initializes the environment state and returns the first observation.
         """
+        # Re-initialize core components
+        self.traffic_gen = TrafficGenerator(seed=self.seed)
+        self.reward_engine = RewardEngine()
+        
         self._state = StateModel(
             raw_logs=[],
             aggregated_stats={},
             active_mitigations=[],
-            attack_flags={},
+            attack_flags={"bruteforce": False, "ddos": False, "multivector": False},
             current_step=0
         )
         self.is_done = False
-        return self._build_observation([])
+        
+        # Generate initial "normal" traffic logs
+        initial_logs = self.traffic_gen.step(mode="normal")
+        
+        # Build first observation
+        observation = self._build_observation(initial_logs)
+        
+        return {
+            "observation": observation,
+            "reward": 0.0,
+            "done": False,
+            "info": {"step": 0, "mode": "normal"}
+        }
+
+    def _get_current_mode(self) -> str:
+        """
+        Heuristic to determine the current traffic mode based on time progression.
+        Allows for challenging, multi-phase episodes.
+        """
+        step = self._state.current_step
+        if step < 100:
+            return "normal"
+        elif step < 200:
+            return "bruteforce"
+        elif step < 250:
+            return "ddos"
+        return "multivector"
+
+    async def step(self, action: ActionModel) -> Dict[str, Any]:
+        """
+        Advances the simulation by one step.
+        Flow: Traffic -> Mitigation -> Reward -> Next State.
+        """
+        if self._state is None:
+            raise RuntimeError("Environment must be reset() before calling step().")
+
+        # 1. Increment Step
+        self._state.current_step += 1
+        
+        # 2. Generate Traffic for current mode
+        mode = self._get_current_mode()
+        self._state.attack_flags = {
+            "bruteforce": mode == "bruteforce",
+            "ddos": mode == "ddos",
+            "multivector": mode == "multivector"
+        }
+        
+        raw_logs = self.traffic_gen.step(mode=mode)
+        original_logs = raw_logs.copy()
+        
+        # 3. Apply Mitigation Actions (Filtered Logs)
+        processed_logs = self._apply_action(action, raw_logs)
+        
+        # 4. Update Internal State
+        self._state.raw_logs.extend(processed_logs)
+        
+        # 5. Compute Reward
+        reward = self.reward_engine.compute_reward(
+            original_logs=original_logs,
+            processed_logs=processed_logs,
+            state=self._state
+        )
+        
+        # Update aggregated stats with latest reward engine metrics
+        self._state.aggregated_stats = self.reward_engine.get_metrics()
+        
+        # 6. Build Next Observation
+        observation = self._build_observation(processed_logs)
+        
+        # 7. Check Terminal Condition
+        self.is_done = self._state.current_step >= 300
+        
+        # 8. Compile Info
+        info = {
+            "step": self._state.current_step,
+            "mode": mode,
+            "total_attacks_blocked": self._state.aggregated_stats.get("blocked_attacks", 0)
+        }
+        
+        return {
+            "observation": observation,
+            "reward": reward,
+            "done": self.is_done,
+            "info": info
+        }
+
+    def state(self) -> StateModel:
+        """
+        Accessor for the full internal environment state.
+        Required for graders and debugging.
+        """
+        return self._state
 
     def _cleanup_expired_rules(self):
-        """
-        Removes mitigation rules whose duration has elapsed.
-        Called at the start of every step.
-        """
+        """Removes mitigation rules whose duration has elapsed."""
         self._state.active_mitigations = [
             rule for rule in self._state.active_mitigations 
             if self._state.current_step < rule.get("expires_at", float('inf'))
         ]
 
     def _apply_action(self, action: ActionModel, logs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        Action Execution Engine:
-        1. Clean expired rules.
-        2. Update mitigations with new action.
-        3. Apply persistent + new mitigations to traffic logs.
-        """
-        # 1. Cleanup before processing
+        """Handles rule persistence and log filtering."""
         self._cleanup_expired_rules()
 
-        # 2. Add New Action to Active Mitigations (if applicable)
-        if action.action_type != "noop" and action.action_type != "clear_actions":
+        if action.action_type not in {"noop", "clear_actions"}:
             params = action.parameters
-            duration = params.get("duration", 60) # Default 60s
-            
-            new_rule = {
+            duration = params.get("duration", 60)
+            self._state.active_mitigations.append({
                 "type": action.action_type,
                 "target": params.get("ip") or params.get("path") or params.get("target"),
                 "expires_at": self._state.current_step + duration,
                 "params": params
-            }
-            self._state.active_mitigations.append(new_rule)
+            })
         elif action.action_type == "clear_actions":
             self._state.active_mitigations = []
 
-        # 3. Apply ALL current active mitigations to the logs in a specific order
-        # Correct Order: block_ip -> rate_limit_ip -> enable_challenge -> waf_rule
-        rule_priority = {
-            "block_ip": 1,
-            "rate_limit_ip": 2,
-            "enable_challenge": 3,
-            "waf_rule": 4
-        }
-        
-        # Sort rules based on priority
-        sorted_rules = sorted(
-            self._state.active_mitigations, 
-            key=lambda x: rule_priority.get(x["type"], 99)
-        )
+        # Application Logic Order: block -> rate limit -> challenge -> waf
+        rule_priority = {"block_ip": 1, "rate_limit_ip": 2, "enable_challenge": 3, "waf_rule": 4}
+        sorted_rules = sorted(self._state.active_mitigations, key=lambda x: rule_priority.get(x["type"], 99))
 
         filtered_logs = logs
         for rule in sorted_rules:
-            rule_type = rule["type"]
-            target = rule["target"]
-            params = rule.get("params", {})
-
+            rule_type, target, params = rule["type"], rule["target"], rule.get("params", {})
             if rule_type == "block_ip":
-                filtered_logs = [log for log in filtered_logs if log["ip"] != target]
-            
+                filtered_logs = [l for l in filtered_logs if l["ip"] != target]
             elif rule_type == "rate_limit_ip":
-                limit = params.get("limit", 10)
-                ip_counts: Dict[str, int] = {}
+                limit, count = params.get("limit", 10), 0
                 new_logs = []
-                for log in filtered_logs:
-                    if log["ip"] == target:
-                        ip_counts[target] = ip_counts.get(target, 0) + 1
-                        if ip_counts[target] <= limit:
-                            new_logs.append(log)
-                    else:
-                        new_logs.append(log)
+                for l in filtered_logs:
+                    if l["ip"] == target:
+                        count += 1
+                        if count <= limit: new_logs.append(l)
+                    else: new_logs.append(l)
                 filtered_logs = new_logs
-
             elif rule_type == "waf_rule":
-                field = params.get("field", "path")
-                pattern = params.get("pattern", "")
-                waf_action = params.get("action", "block")
-                
-                if waf_action == "block":
-                    filtered_logs = [log for log in filtered_logs if log.get(field) != pattern]
-                elif waf_action == "allow":
-                    # For simplicity, 'allow' keeps logs that match, 
-                    # but doesn't necessarily block others unless there's a default-deny
-                    pass 
-
+                field, pattern, act = params.get("field", "path"), params.get("pattern", ""), params.get("action", "block")
+                if act == "block": filtered_logs = [l for l in filtered_logs if l.get(field) != pattern]
             elif rule_type == "enable_challenge":
-                # Reduce matching traffic by ~50% (CAPTCHA simulation)
-                filtered_logs = [
-                    log for log in filtered_logs 
-                    if not (log["ip"] == target and random.random() < 0.5)
-                ]
-
+                filtered_logs = [l for l in filtered_logs if not (l["ip"] == target and random.random() < 0.5)]
+        
         return filtered_logs
 
     def _build_observation(self, logs: List[Dict[str, Any]]) -> ObservationModel:
-        """
-        Aggregates raw traffic logs into a structured ObservationModel.
-        """
-        traffic_summary: Dict[str, int] = {}
-        endpoint_summary: Dict[str, int] = {}
-        error_counts: Dict[str, int] = {}
-        
+        """Aggregates traffic logs into the observation schema."""
+        traffic_summary, endpoint_summary, error_counts = {}, {}, {}
         for log in logs:
-            ip = log["ip"]
-            path = log["path"]
-            status = log["status"]
+            ip, path, status = log["ip"], log["path"], log["status"]
             traffic_summary[ip] = traffic_summary.get(ip, 0) + 1
             endpoint_summary[path] = endpoint_summary.get(path, 0) + 1
-            if status >= 400:
-                error_counts[ip] = error_counts.get(ip, 0) + 1
+            if status >= 400: error_counts[ip] = error_counts.get(ip, 0) + 1
 
-        error_rates: Dict[str, float] = {}
-        anomaly_scores: Dict[str, float] = {}
-        VOLUME_THRESHOLD = 50.0
-
+        error_rates, anomaly_scores, VOLUME_THRESHOLD = {}, {}, 50.0
         for ip, count in traffic_summary.items():
-            ip_errors = error_counts.get(ip, 0)
-            rate = ip_errors / count
+            rate = error_counts.get(ip, 0) / count
             error_rates[ip] = rate
-            volume_score = count / VOLUME_THRESHOLD
-            score = min(1.0, volume_score + rate)
-            anomaly_scores[ip] = score
+            anomaly_scores[ip] = min(1.0, (count / VOLUME_THRESHOLD) + rate)
 
         return ObservationModel(
             traffic_summary=traffic_summary,
@@ -168,35 +200,8 @@ class GatekeeperEnv:
             timestamp=self._state.current_step
         )
 
-    async def step(self, action: ActionModel) -> Tuple[ObservationModel, float, bool, Dict[str, Any]]:
-        """
-        Executes an action, advances the simulation, and returns the next step data.
-        """
-        # 1. Fetch Raw Traffic Logs (Future Phase Integration)
-        # For now, placeholder or generator call
-        raw_logs = [] # self.traffic_gen.generate_...()
-        
-        # 2. Apply Mitigation Action
-        filtered_logs = self._apply_action(action, raw_logs)
-        
-        # 3. Calculate Reward (Future Phase)
-        reward = self.reward_engine.compute_reward(self._state, action)
-        
-        # 4. Advance State
-        self._state.current_step += 1
-        if self._state.current_step >= 300:
-            self.is_done = True
-            
-        # 5. Return Observation
-        return self._build_observation(filtered_logs), reward, self.is_done, {}
-
-    def state(self) -> StateModel:
-        """
-        Accessor for the full internal environment state.
-        """
-        return self._state
-
-# --- Example Logic (Documentation) ---
-# logs = [ {"ip": "1.1.1.1", "path": "/login", "status": 401}, ... ]
-# action = ActionModel(action_type="block_ip", parameters={"ip": "1.1.1.1"})
-# Result: filtered_logs = []
+# --- Example Usage (Documentation) ---
+# env = GatekeeperEnv()
+# initial = await env.reset()
+# result = await env.step(ActionModel(action_type="noop", parameters={}))
+# print(f"Current Step Result: {result['reward']}")
