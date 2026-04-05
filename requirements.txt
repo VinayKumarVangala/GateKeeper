@@ -1,0 +1,6 @@
+openenv-core
+pydantic
+numpy
+pandas
+fastapi
+uvicorn
