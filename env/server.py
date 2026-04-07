@@ -1,8 +1,8 @@
 import os
 from fastapi import FastAPI, HTTPException
 from typing import Dict, Any
-from .gatekeeper_env import GatekeeperEnv
-from .models import ActionModel
+from env.gatekeeper_env import GatekeeperEnv
+from env.models import ActionModel
 
 # Create FastAPI app instance
 app = FastAPI(title="Gatekeeper OpenEnv Server")
@@ -35,3 +35,15 @@ async def get_state():
 async def health():
     """Health check endpoint."""
     return {"status": "healthy", "env": "gatekeeper"}
+
+@app.get("/")
+async def root():
+    return {
+        "message": "Gatekeeper OpenEnv is running 🚀",
+        "endpoints": {
+            "reset": "/reset (POST)",
+            "step": "/step (POST)",
+            "state": "/state (GET)",
+            "health": "/health (GET)"
+        }
+    }
