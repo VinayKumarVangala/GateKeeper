@@ -51,7 +51,7 @@ class TrafficGenerator:
     def generate_legit_traffic(self) -> List[Dict[str, Any]]:
         """Simulates low-to-moderate volume legitimate user traffic."""
         num_requests = self.random.randint(5, 15)
-        logs = [
+        logs: List[Dict[str, Any]] = [
             {
                 "ip": self.random.choice(self.legit_ips),
                 "path": self.random.choice(self.endpoints[:4]),
@@ -60,13 +60,13 @@ class TrafficGenerator:
             }
             for _ in range(num_requests)
         ]
-        return logs
+        return logs[:self.MAX_LOGS_PER_STEP]
 
     def generate_bruteforce_attack(self) -> List[Dict[str, Any]]:
         """Simulates a targeted brute force attack on /login."""
         num_attackers = self.random.randint(1, 3)
-        attackers = self.attacker_ips[:num_attackers]
-        logs = []
+        attackers = [self.attacker_ips[i] for i in range(min(len(self.attacker_ips), num_attackers))]
+        logs: List[Dict[str, Any]] = []
         
         for ip in attackers:
             num_requests = self.random.randint(20, 50)
@@ -83,7 +83,7 @@ class TrafficGenerator:
         """Simulates a volumetric DDoS attack."""
         num_attack_ips = self.random.randint(50, 100)
         attackers = self.random.sample(self.attacker_ips, num_attack_ips)
-        logs = []
+        logs: List[Dict[str, Any]] = []
         
         for ip in attackers:
             num_requests = self.random.randint(2, 5)
@@ -110,6 +110,7 @@ class TrafficGenerator:
         """Advances simulation and generates logs constrained by MAX_LOGS_PER_STEP."""
         self.current_step += 1
         
+        logs: List[Dict[str, Any]] = []
         if mode == "normal":
             logs = self.generate_legit_traffic()
         elif mode == "bruteforce":

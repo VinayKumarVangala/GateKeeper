@@ -14,7 +14,8 @@ API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY") or "placeholder"
 MAX_STEPS = 300
 MAX_TOTAL_REWARD = 500.0  # Estimated max reward for normalization
 
-client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+from openai import AsyncOpenAI
+client = AsyncOpenAI(base_url=API_BASE_URL, api_key=API_KEY, timeout=30.0)
 
 # --- Logging Functions (STRICT FORMAT) ---
 def log_start(task: str, env_name: str, model: str):
@@ -30,17 +31,21 @@ def log_end(success: bool, steps: int, score: float, rewards: List[float]):
     print(f"[END] success={success_str} steps={steps} score={score:.2f} rewards={rewards_str}")
 
 # --- Agent Logic ---
-def get_model_action(observation: Any, history: List[str]) -> str:
+async def get_model_action(observation: Any, history: List[str]) -> str:
     """
     Constructs a prompt and queries the AI model for a defense action.
     """
-    history_context = "\n".join(history[-5:]) # Last 5 steps
+    # Cast to List to resolve potential linter slicing issues
+    history_context = "\n".join(list(history)[-5:]) 
+    
+    # Extract dict safely for different Pydantic versions
+    obs_dict = observation.model_dump() if hasattr(observation, 'model_dump') else observation.dict()
     
     prompt = f"""
     You are a Gatekeeper WAF. Analyze the traffic and take a mitigation action.
     
     Current Observation:
-    {json.dumps(observation.dict() if hasattr(observation, 'dict') else observation, indent=2)}
+    {json.dumps(obs_dict, indent=2)}
     
     Previous History:
     {history_context}
@@ -55,7 +60,7 @@ def get_model_action(observation: Any, history: List[str]) -> str:
     """
     
     try:
-        response = client.chat.completions.create(
+        response = await client.chat.completions.create(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=150,
@@ -81,8 +86,8 @@ def parse_action(action_str: str) -> ActionModel:
 # --- Main loop ---
 async def main():
     env = GatekeeperEnv()
-    history = []
-    rewards = []
+    history: List[str] = []
+    rewards: List[float] = []
     task_name = "gatekeeper"
     env_name = "cybersec"
     
@@ -95,7 +100,7 @@ async def main():
         
         for step in range(1, MAX_STEPS + 1):
             # 1. Generate Action
-            raw_action = get_model_action(obs, history)
+            raw_action = await get_model_action(obs, history)
             action = parse_action(raw_action)
             
             # 2. Execute Step
