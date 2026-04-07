@@ -1,0 +1,24 @@
+[project]
+name = "gatekeeper"
+version = "0.1.0"
+description = "OpenEnv Gatekeeper environment for DoS prevention"
+requires-python = ">=3.10"
+authors = [
+    { name="Vinay Kumar", email="vinaykumarvangala05@gmail.com" }
+]
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "numpy",
+    "pandas",
+    "openai",
+    "openenv-core>=0.2.0",
+    "python-dotenv"
+]
+
+[project.scripts]
+server = "server.app:main"
+
+[tool.setuptools.packages.find]
+where = ["."]

@@ -1,18 +1,17 @@
 import os
 from fastapi import FastAPI, HTTPException
 from typing import Dict, Any
-from env.gatekeeper_env import GatekeeperEnv
-from env.models import ActionModel
 
-# Create FastAPI app instance
+from .gatekeeper_env import GatekeeperEnv
+from .models import ActionModel
+
+# --- FastAPI Initialization ---
 app = FastAPI(title="Gatekeeper OpenEnv Server")
-
-# Global environment instance (Simplified for demo)
 env = GatekeeperEnv()
 
 @app.post("/reset")
 async def reset():
-    """Reset the Gatekeeper environment."""
+    """Reset the environment to start a new episode."""
     try:
         return await env.reset()
     except Exception as e:
@@ -20,7 +19,7 @@ async def reset():
 
 @app.post("/step")
 async def step(action: ActionModel):
-    """Execute a mitigation step in the environment."""
+    """Apply an action and receive state/reward feedback."""
     try:
         return await env.step(action)
     except Exception as e:
@@ -28,22 +27,14 @@ async def step(action: ActionModel):
 
 @app.get("/state")
 async def get_state():
-    """Retrieve the full internal state (for debugging/grading)."""
+    """Access the ground-truth internal environment state."""
     return env.state()
 
 @app.get("/health")
 async def health():
-    """Health check endpoint."""
+    """Environment health and readiness check."""
     return {"status": "healthy", "env": "gatekeeper"}
 
 @app.get("/")
 async def root():
-    return {
-        "message": "Gatekeeper OpenEnv is running 🚀",
-        "endpoints": {
-            "reset": "/reset (POST)",
-            "step": "/step (POST)",
-            "state": "/state (GET)",
-            "health": "/health (GET)"
-        }
-    }
+    return {"message": "Gatekeeper OpenEnv Server is running"}

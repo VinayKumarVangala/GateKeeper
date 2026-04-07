@@ -1,0 +1,12 @@
+# Python environment and secrets
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+
+# OpenEnv runtime artifacts
+logs/
+.gatekeeper_info
