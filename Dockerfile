@@ -34,6 +34,7 @@ EXPOSE 7860
 
 # --- Start Command ---
 # Preferred: Start as a production-grade FastAPI web server
+ENV ENABLE_WEB_INTERFACE=true
 CMD ["python", "-m", "uvicorn", "env.server:app", "--host", "0.0.0.0", "--port", "7860"]
 
 # --- Build & Run Instructions ---
