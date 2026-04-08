@@ -3,34 +3,38 @@ from typing import List, Any
 def evaluate(state_history: List[Any]) -> float:
     """
     Evaluates agent performance on Brute Force Mitigation.
-    Focuses on:
-    - High Precision (no false blocks)
-    - High Recall (all attacks blocked)
-    - Response Time < 10s
+    Standardized OpenEnv grader logic.
     """
     if not state_history:
-        return 0.0
+        return 0.01
 
+    # Extract the final state metadata
+    # The environment stores StateModel in the history
     last_state = state_history[-1]
-    stats = last_state.aggregated_stats
+    
+    # StateModel has 'aggregated_stats' attribute
+    # Handle both object and dict formats for robustness
+    stats = getattr(last_state, "aggregated_stats", {})
+    if not stats and isinstance(last_state, dict):
+        stats = last_state.get("aggregated_stats", {})
 
-    precision = stats.get("precision", 0.0)
-    recall = stats.get("recall", 0.0)
-    first_detection = stats.get("first_detection_step", 300)
+    # Extract core metrics
+    tp = stats.get("blocked_attacks", 0)
+    fp = stats.get("false_positives", 0)
+    fn = stats.get("false_negatives", 0)
+    first_detection = stats.get("first_detection_step")
 
-    # 1. Base Score from Precision and Recall
-    # F1-like harmonic mean or weighted average
-    base_score = (precision * 0.4) + (recall * 0.4)
+    # Task 2: Implement Scoring Logic
+    precision = tp / (tp + fp + 1e-6)
+    recall = tp / (tp + fn + 1e-6)
+    score = 0.5 * precision + 0.5 * recall
 
-    # 2. Response Time Bonus (Total 0.2)
-    time_bonus = 0.0
-    if recall > 0.5: # Only give bonus if they actually caught some
-        if first_detection <= 5:
-            time_bonus = 0.2
-        elif first_detection <= 20:
-            time_bonus = 0.1
-        elif first_detection <= 50:
-            time_bonus = 0.05
+    # Task 4: Add Response Time Bonus
+    if first_detection is not None:
+        if first_detection < 5:
+            score += 0.05
+        elif first_detection > 30:
+            score -= 0.05
 
-    final_score = base_score + time_bonus
-    return min(1.0, max(0.0, final_score))
+    # Task 3: Clamp Score STRICTLY between (0,1)
+    return max(0.01, min(score, 0.99))

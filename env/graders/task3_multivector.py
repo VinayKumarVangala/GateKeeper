@@ -2,28 +2,33 @@ from typing import List, Any
 
 def evaluate(state_history: List[Any]) -> float:
     """
-    Evaluates agent performance on Multi-Vector Attack Mitigation.
-    Focuses on:
-    - Balanced defense across all attack streams.
-    - Consistency over full episode.
+    Evaluates agent performance on Multi-Vector Attack Defense.
+    Standardized OpenEnv grader logic.
     """
     if not state_history:
-        return 0.0
+        return 0.01
 
     last_state = state_history[-1]
-    stats = last_state.aggregated_stats
+    stats = getattr(last_state, "aggregated_stats", {})
+    if not stats and isinstance(last_state, dict):
+        stats = last_state.get("aggregated_stats", {})
 
-    # Use F1-based score for Multi-vector to penalize failure on any one vector
-    precision = stats.get("precision", 0.0)
-    recall = stats.get("recall", 0.0)
-    
-    # 2 * P * R / (P + R)
-    f1_score = (2.0 * precision * recall) / (precision + recall + 1e-9)
-    
-    # Penalty for false positives (most critical in multi-vector)
-    fp_penalty = 0.0
-    if stats.get("false_positives", 0) > 100:
-        fp_penalty = 0.2 # -20% score for high false positive rates
+    tp = stats.get("blocked_attacks", 0)
+    fp = stats.get("false_positives", 0)
+    fn = stats.get("false_negatives", 0)
+    first_detection = stats.get("first_detection_step")
 
-    final_score = f1_score - fp_penalty
-    return min(1.0, max(0.0, final_score))
+    # Core scoring logic
+    precision = tp / (tp + fp + 1e-6)
+    recall = tp / (tp + fn + 1e-6)
+    score = 0.5 * precision + 0.5 * recall
+
+    # Response time bonus/penalty
+    if first_detection is not None:
+        if first_detection < 5:
+            score += 0.05
+        elif first_detection > 30:
+            score -= 0.05
+
+    # Strict clamping to (0, 1) exclusive
+    return max(0.01, min(score, 0.99))
