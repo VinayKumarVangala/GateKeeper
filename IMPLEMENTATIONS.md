@@ -20,7 +20,7 @@ Establish a clean OpenEnv-compliant project structure.
 * `env/models.py`
 * `env/traffic_generator.py`
 * `env/reward_engine.py`
-* `env/graders/`
+* `gatekeeper/graders/`
 * `openenv.yaml`
 * `inference.py`
 * `Dockerfile`
@@ -184,7 +184,7 @@ Design dense reward signal across steps
 
 Evaluate agent performance deterministically
 
-### 📁 Folder: `env/graders/`
+### 📁 Folder: `gatekeeper/graders/`
 
 ### 📁 Files:
 

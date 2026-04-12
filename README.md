@@ -33,6 +33,7 @@ This repository is compliant with **OpenEnv** standards and designed for RL agen
 │   ├── traffic_generator.py # Simulates legitimate and attack traffic
 │   ├── reward_engine.py     # dense reward computation logic
 │   ├── server.py            # FastAPI + Gradio server for deployment
+├── gatekeeper/
 │   └── graders/             # Deterministic task evaluators
 │       ├── task1_bruteforce.py
 │       ├── task2_ddos.py
