@@ -59,7 +59,7 @@ def get_model_action(observation: Any, history: List[str]) -> str:
     """Construct a prompt and query the LLM for a mitigation action.
     If the API call fails, a deterministic fallback action is returned.
     """
-    history_context = "\n".join(list(history)[-5:])
+    history_context = "\n".join(history[-5:])
 
     # Extract dict safely for different Pydantic versions
     obs_dict = observation.model_dump() if hasattr(observation, "model_dump") else observation.dict()
@@ -107,50 +107,53 @@ def parse_action(action_str: str) -> ActionModel:
 # --- Main loop ---
 async def main():
     env = GatekeeperEnv()
-    history: List[str] = []
-    rewards: List[float] = []
-    task_name = "gatekeeper"
-    env_name = "cybersec"
+    env_name = "gatekeeper"
 
-    log_start(task_name, env_name, MODEL_NAME)
+    tasks = ["task1_bruteforce", "task2_ddos", "task3_multivector"]
+    
+    for task_name in tasks:
+        history: List[str] = []
+        rewards: List[float] = []
+        log_start(task_name, env_name, MODEL_NAME)
 
-    try:
-        # Start Episode
-        result = await env.reset()
-        obs = result["observation"]
+        try:
+            # Start Episode
+            result = await env.reset()
+            obs = result["observation"]
 
-        for step in range(1, MAX_STEPS + 1):
-            # 1. Generate Action
-            raw_action = get_model_action(obs, history)
-            action = parse_action(raw_action)
+            # Reduce output to 3 steps per task as requested
+            for step in range(1, 4):
+                # 1. Generate Action
+                raw_action = get_model_action(obs, history)
+                action = parse_action(raw_action)
 
-            # 2. Execute Step
-            try:
-                res = await env.step(action)
-                obs = res["observation"]
-                reward = res["reward"]
-                done = res["done"]
-                error = "null"
-            except Exception as e:
-                reward = 0.0
-                done = True
-                error = str(e)
+                # 2. Execute Step
+                try:
+                    res = await env.step(action)
+                    obs = res["observation"]
+                    reward = res["reward"]
+                    done = res["done"]
+                    error = "null"
+                except Exception as e:
+                    reward = 0.0
+                    done = True
+                    error = str(e)
 
-            # 3. Logging & Tracking
-            log_step(step, action.action_type, reward, done, error)
-            rewards.append(reward)
-            history.append(f"Step {step}: Action={action.action_type}, Reward={reward:.2f}")
+                # 3. Logging & Tracking
+                log_step(step, action.action_type, reward, done, error)
+                rewards.append(reward)
+                history.append(f"Step {step}: Action={action.action_type}, Reward={reward:.2f}")
 
-            if done:
-                break
+                if done:
+                    break
 
-        # Calculate Final Score for normalized report (strictly between 0 and 1)
-        total_rewards = sum(rewards)
-        score = max(0.01, min(total_rewards / MAX_TOTAL_REWARD, 0.99))
-        log_end(success=True, steps=len(rewards), score=score, rewards=rewards)
+            # Calculate Final Score for normalized report (strictly between 0 and 1)
+            total_rewards = sum(rewards)
+            score = max(0.01, min(total_rewards / MAX_TOTAL_REWARD, 0.99))
+            log_end(success=True, steps=len(rewards), score=score, rewards=rewards)
 
-    except Exception as e:
-        log_end(success=False, steps=len(rewards), score=0.01, rewards=rewards)
+        except Exception as e:
+            log_end(success=False, steps=len(rewards), score=0.01, rewards=rewards)
 
 if __name__ == "__main__":
     asyncio.run(main())
