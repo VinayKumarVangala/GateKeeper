@@ -2,6 +2,18 @@ spec_version: 1
 name: gatekeeper
 type: space
 runtime: fastapi
-app: server.app:app
-port: 8000
+app: env.server:app
+port: 7860
 
+tasks:
+  - id: task1_bruteforce
+    name: bruteforce_detection
+    grader: env.graders.task1_bruteforce:evaluate
+
+  - id: task2_ddos
+    name: ddos_mitigation
+    grader: env.graders.task2_ddos:evaluate
+
+  - id: task3_multivector
+    name: multivector_defense
+    grader: env.graders.task3_multivector:evaluate
