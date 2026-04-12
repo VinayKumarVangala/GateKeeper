@@ -1,110 +1,19 @@
-# Gatekeeper OpenEnv Configuration
-# Defines the metadata, action/observation schemas, and tasks for the environment.
-
+spec_version: 1
 name: gatekeeper
-version: 0.1.0
-description: "Real-time DoS prevention environment designed for AI-driven cybersecurity defense"
-entrypoint: env.gatekeeper_env:GatekeeperEnv
+type: space
+runtime: fastapi
+app: env.server:app
+port: 7860
 
-# --- Observation Space ---
-observation_space:
-  type: object
-  properties:
-    traffic_summary:
-      type: object
-      description: "Requests per IP or entity"
-      additionalProperties:
-        type: integer
-
-    endpoint_summary:
-      type: object
-      description: "Requests per endpoint/path"
-      additionalProperties:
-        type: integer
-
-    error_rates:
-      type: object
-      description: "Ratio of failed requests (4xx/5xx) per IP"
-      additionalProperties:
-        type: number
-
-    anomaly_scores:
-      type: object
-      description: "Computed suspicion level per IP or path [0.0 - 1.0]"
-      additionalProperties:
-        type: number
-
-    active_rules:
-      type: array
-      description: "List of mitigation rules currently active in the WAF"
-      items:
-        type: object
-
-    timestamp:
-      type: integer
-      description: "Current simulation time step"
-
-  required:
-    - traffic_summary
-    - endpoint_summary
-    - error_rates
-    - anomaly_scores
-    - active_rules
-    - timestamp
-
-# --- Action Space ---
-action_space:
-  type: object
-  properties:
-    action_type:
-      type: string
-      description: "The mitigation action to apply"
-      enum:
-        - block_ip
-        - rate_limit_ip
-        - rate_limit_path
-        - enable_challenge
-        - add_waf_rule
-        - whitelist_ip
-        - clear_actions
-
-    parameters:
-      type: object
-      description: "Policy parameters (ip, path, limit, duration, etc.)"
-      additionalProperties: true
-
-  required:
-    - action_type
-    - parameters
-
-# --- Tasks Definition ---
 tasks:
   - id: task1_bruteforce
     name: bruteforce_detection
-    description: "Detect and mitigate targeted login brute force attacks on /login"
-    difficulty: easy
     grader: env.graders.task1_bruteforce:evaluate
 
   - id: task2_ddos
     name: ddos_mitigation
-    description: "Handle high-volume volumetric DDoS traffic while protecting legit users"
-    difficulty: medium
     grader: env.graders.task2_ddos:evaluate
 
   - id: task3_multivector
     name: multivector_defense
-    description: "Defend against interleaved brute force and volumetric attack streams"
-    difficulty: hard
     grader: env.graders.task3_multivector:evaluate
-
-# --- Additional Metadata ---
-tags:
-  - cybersecurity
-  - rl
-  - openenv
-  - ddos
-  - waf
-
-author: "Gatekeeper Team"
-license: "MIT"
-repository: "https://github.com/VinayKumarVangala/GateKeeper"
