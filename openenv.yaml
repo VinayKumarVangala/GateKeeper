@@ -8,12 +8,12 @@ port: 7860
 tasks:
   - id: task1_bruteforce
     name: bruteforce_detection
-    grader: gatekeeper.graders.task1_bruteforce:evaluate
+    grader: env.graders.task1_bruteforce:evaluate
 
   - id: task2_ddos
     name: ddos_mitigation
-    grader: gatekeeper.graders.task2_ddos:evaluate
+    grader: env.graders.task2_ddos:evaluate
 
   - id: task3_multivector
     name: multivector_defense
-    grader: gatekeeper.graders.task3_multivector:evaluate
+    grader: env.graders.task3_multivector:evaluate
