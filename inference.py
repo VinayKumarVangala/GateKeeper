@@ -146,11 +146,11 @@ async def main():
 
         # Calculate Final Score for normalized report (strictly between 0 and 1)
         total_rewards = sum(rewards)
-        score = max(0.0, min(total_rewards / MAX_TOTAL_REWARD, 0.99))
+        score = max(0.01, min(total_rewards / MAX_TOTAL_REWARD, 0.99))
         log_end(success=True, steps=len(rewards), score=score, rewards=rewards)
 
     except Exception as e:
-        log_end(success=False, steps=len(rewards), score=0.0, rewards=rewards)
+        log_end(success=False, steps=len(rewards), score=0.01, rewards=rewards)
 
 if __name__ == "__main__":
     asyncio.run(main())

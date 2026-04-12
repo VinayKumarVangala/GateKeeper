@@ -35,6 +35,42 @@ async def health():
     """Environment health and readiness check."""
     return {"status": "healthy", "env": "gatekeeper"}
 
-@app.get("/")
-async def root():
-    return {"message": "Gatekeeper OpenEnv Server is running"}
+import gradio as gr
+
+# --- Gradio Web UI ---
+with gr.Blocks(title="Gatekeeper Demo", theme=gr.themes.Default(primary_hue="blue")) as demo:
+    gr.Markdown("# 🛡️ Gatekeeper - OpenEnv Cybersecurity Demo")
+    gr.Markdown("Interactive WAF Simulator to train RL agents against DoS/DDoS attacks.")
+    
+    with gr.Row():
+        with gr.Column(scale=1):
+            action_type = gr.Dropdown(
+                choices=["noop", "block_ip", "rate_limit_ip", "rate_limit_path", "enable_challenge", "add_waf_rule", "whitelist_ip", "clear_actions"], 
+                label="Action Type", 
+                value="noop"
+            )
+            ip_param = gr.Textbox(label="Target IP (Optional)", placeholder="e.g. 10.0.0.5")
+            step_btn = gr.Button("Step Environment", variant="primary")
+            reset_btn = gr.Button("Reset Environment")
+        
+        with gr.Column(scale=2):
+            result_json = gr.JSON(label="Step Output (Observation & Reward)")
+            state_json = gr.JSON(label="Internal State Dump")
+
+    async def do_step(act_type, ip):
+        params = {}
+        if ip: params["ip"] = ip
+        if act_type in ["block_ip", "rate_limit_ip", "enable_challenge"]:
+           params["duration"] = 60
+        act = ActionModel(action_type=act_type, parameters=params)
+        res = await env.step(act)
+        return res, env.state()
+
+    async def do_reset():
+        res = await env.reset()
+        return res, env.state()
+
+    step_btn.click(do_step, inputs=[action_type, ip_param], outputs=[result_json, state_json])
+    reset_btn.click(do_reset, inputs=[], outputs=[result_json, state_json])
+
+app = gr.mount_gradio_app(app, demo, path="/")
