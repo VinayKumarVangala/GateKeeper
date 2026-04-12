@@ -38,24 +38,52 @@ async def health():
 import gradio as gr
 
 # --- Gradio Web UI ---
-with gr.Blocks(title="Gatekeeper Demo", theme=gr.themes.Default(primary_hue="blue")) as demo:
-    gr.Markdown("# 🛡️ Gatekeeper - OpenEnv Cybersecurity Demo")
-    gr.Markdown("Interactive WAF Simulator to train RL agents against DoS/DDoS attacks.")
+with gr.Blocks(title="Gatekeeper Demo", theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate")) as demo:
+    gr.Markdown(
+        """
+        <div style="text-align: center;">
+            <h1>🛡️ Gatekeeper - OpenEnv Cybersecurity Demo</h1>
+            <p>Interactive Web Application Firewall (WAF) Simulator to train and evaluate RL agents against DoS/DDoS computational attacks.</p>
+        </div>
+        """
+    )
     
     with gr.Row():
         with gr.Column(scale=1):
-            action_type = gr.Dropdown(
-                choices=["noop", "block_ip", "rate_limit_ip", "rate_limit_path", "enable_challenge", "add_waf_rule", "whitelist_ip", "clear_actions"], 
-                label="Action Type", 
-                value="noop"
-            )
-            ip_param = gr.Textbox(label="Target IP (Optional)", placeholder="e.g. 10.0.0.5")
-            step_btn = gr.Button("Step Environment", variant="primary")
-            reset_btn = gr.Button("Reset Environment")
-        
+            with gr.Group():
+                gr.Markdown("### 📡 Security Control Panel")
+                action_type = gr.Dropdown(
+                    choices=["noop", "block_ip", "rate_limit_ip", "rate_limit_path", "enable_challenge", "add_waf_rule", "whitelist_ip", "clear_actions"], 
+                    label="Action Type", 
+                    value="noop",
+                    info="Select the mitigation action to apply in the simulation."
+                )
+                ip_param = gr.Textbox(
+                    label="Target Entity (Optional)", 
+                    placeholder="e.g. 10.0.0.5 or /api/login",
+                    info="Specify the IP address or endpoint path to apply the action onto."
+                )
+                
+            with gr.Row():
+                step_btn = gr.Button("▶ Step Environment", variant="primary", scale=2)
+                reset_btn = gr.Button("🔄 Reset Episode", variant="secondary", scale=1)
+                
+            with gr.Accordion("ℹ️ How to Use", open=False):
+                gr.Markdown(
+                    """
+                    1. **Reset Episode:** Start a new network traffic simulation.
+                    2. **Select Action:** Choose a WAF mitigation strategy (e.g., `block_ip`).
+                    3. **Target Entity:** Enter the suspicious IP or endpoint.
+                    4. **Step Environment:** Apply the action and advance the simulation by one step. Observe the changes in network traffic and your defensive reward.
+                    """
+                )
+                
         with gr.Column(scale=2):
-            result_json = gr.JSON(label="Step Output (Observation & Reward)")
-            state_json = gr.JSON(label="Internal State Dump")
+            with gr.Tabs():
+                with gr.TabItem("📊 Observation & Reward"):
+                    result_json = gr.JSON(label="Last Step Output")
+                with gr.TabItem("⚙️ Internal State"):
+                    state_json = gr.JSON(label="Full Environment Dump")
 
     async def do_step(act_type, ip):
         params = {}
